@@ -1,6 +1,6 @@
 """HFVC - Admission Objects."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import pandas as pd
 
 
@@ -10,7 +10,7 @@ ADMISSION_TYPES = {
     "EMCV": "emergency CV",
     "EMHF": "emergency HF",
     "EMXX": "emergency misc."
-}
+    }
 
 
 class Admission:
@@ -30,7 +30,7 @@ class Admission:
     def __str__(self):
         string = (f"Patient {self.patient_id} {ADMISSION_TYPES[self.type]} "
                   f"admission #{self.index}: {self.date.strftime('%Y-%m-%d')}, "
-                  f"{self.length_of_stay.days} day(s)")
+                  f"{self.length_of_stay} day(s)")
         return string
 
     def __hash__(self):
@@ -41,7 +41,29 @@ class Admission:
         """DatedValue(name, value, date)"""
         _, code, _, index = dated_value.name.replace("LOS", "_LOS").split("_")
         index = int(index[1:])
-        return Admission(pid, code, index, dated_value.date, timedelta(dated_value.value))
+        return Admission(pid, code, index, dated_value.date, int(dated_value.value))
+
+    def split_into_days(self):
+        days = [self.date + timedelta(days=i) for i in range(self.length_of_stay)]
+        return days
+
+    def split_into_isoweeks(self):
+        days = self.split_into_days()
+        weeks = sorted(
+            {datetime.fromisocalendar(day.isocalendar().year, day.isocalendar().week, 1).date()
+            for day in days}
+            )
+        return weeks
+
+    def split_into_months(self):
+        days = self.split_into_days()
+        months = sorted({datetime(day.year, day.month, 1).date() for day in days})
+        return months
+
+    def split_into_years(self):
+        days = self.split_into_days()
+        years = sorted({datetime(day.year, 1, 1).date() for day in days})
+        return years
 
 
 class AdmissionList:
@@ -58,6 +80,9 @@ class AdmissionList:
     def __len__(self):
         size = self.get_counts(False)
         return size
+
+    def __str__(self):
+        return f"AdmissionList(size={len(self)}"
 
     def assign_admissions(self, admissions):
         for admission in admissions:
@@ -125,7 +150,7 @@ class AdmissionList:
     def filter_admissions(self, admit_type="", date_range=None, as_AdmissionList=False):
         admit_list = self.get_all("list")
         match admit_type.upper():
-            case "":
+            case "" | "ALL":
                 pass
             case "EMHF" | "EMCV" | "EMXX" | "ELCV" | "ELXX":
                 admit_list = self.__getattribute__(admit_type.upper())

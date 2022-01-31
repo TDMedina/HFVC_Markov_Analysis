@@ -3,9 +3,9 @@
 from datetime import datetime, timedelta
 from warnings import warn
 import pandas as pd
-from admissions import AdmissionList
+from admissions import AdmissionList, Admission
 from utilities import NamedDate
-
+from matplotlib import pyplot as plt
 
 class PatientDatabase:
     def __init__(self, patients=None):
@@ -56,6 +56,26 @@ class PatientDatabase:
     @property
     def size(self):
         return self.__len__()
+
+    def plot_patient_chains(self, normalize=False):
+        for i, patient in enumerate(self, start=1):
+            chain = patient.years_admitted()
+            if normalize:
+                chain = {year-min(chain): admit for year, admit in chain.items()}
+            admits = [year for year in chain if chain[year] == "Admitted"]
+            # non_admits = [year for year in chain if chain[year] == "Not admitted"]
+            death = [year for year in chain if chain[year] == "Death"]
+            # line = chain.keys()
+            plt.plot(chain.keys(), [i]*len(chain), color="black")
+            plt.plot(admits, [i]*len(admits), color="red", marker="o", linestyle="")
+            plt.plot(death, [i]*len(death), color="red", marker="X", linestyle="")
+        return
+
+    # def make_chain_table(self):
+    #     chains = {patient.id: patient.years_admitted() for patient in self}
+    #     years = {year for chain in chains.values() for year in chain}
+    #     min_year = min(years)
+    #     max_year = max(years)
 
 
 class Patient:
@@ -153,3 +173,37 @@ class Patient:
                     else (x[0], x[1], x[2]) for x in timeline]
         for entry in timeline:
             print(f"{entry[0]}: {entry[1]} - Stage {entry[2]}")
+
+    def make_admission_chain(self, interval="year", admit_types="EM", date_range=None):
+        match interval.lower():
+            case "d" | "day":
+                split_admit = lambda admit: admit.split_into_days()
+            case "w" | "week":
+                split_admit = lambda admit: admit.split_into_isoweeks()
+            case "m" | "month":
+                split_admit = lambda admit: admit.split_into_months()
+            case "y" | "year":
+                split_admit = lambda admit: admit.split_into_years()
+            case _:
+                raise ValueError("Unknown interval type.")
+        admissions = self.admissions.filter_admissions(admit_types, date_range)
+        admissions = {date: 1 for admit in admissions for date in split_admit(admit)}
+
+        if self.deceased is True and not pd.isna(self.date_of_death):
+            death_date = Admission(self.id, "Death", -1, self.date_of_death, 1)
+            death_date = split_admit(death_date)[0]
+            admissions[death_date] = 2
+
+        admit_dates = list(admissions.keys())
+        non_admissions = {}
+        for i, date in enumerate(admit_dates, start=0):
+            if i == len(admit_dates)-1:
+                break
+            diff = admit_dates[i+1] - admit_dates[i]
+            non_admissions = Admission(self.id, "Non-admission", -1,
+                                       date+timedelta(days=1), diff.days-1)
+            non_admissions = split_admit(non_admissions)
+            non_admissions = set(non_admissions) - set(admit_dates)
+            non_admissions = {non_admit: 0 for non_admit in non_admissions}
+            admissions.update(non_admissions)
+        return admissions
