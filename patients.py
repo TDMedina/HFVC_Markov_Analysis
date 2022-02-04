@@ -2,10 +2,12 @@
 
 from datetime import datetime, timedelta
 from warnings import warn
+
+from matplotlib import pyplot as plt
 import pandas as pd
+
 from admissions import AdmissionList, Admission
 from utilities import NamedDate
-from matplotlib import pyplot as plt
 
 class PatientDatabase:
     def __init__(self, patients=None):
@@ -56,6 +58,15 @@ class PatientDatabase:
     @property
     def size(self):
         return self.__len__()
+
+    def make_admission_chains(self, interval="year", values_only=False,
+                              admit_types="EM", date_range=None):
+        chains = {patient.id: patient.make_admission_chain(interval, values_only,
+                                                           admit_types, date_range)
+                  for patient in self}
+        if values_only:
+            chains = list(chains.values())
+        return chains
 
     def plot_patient_chains(self, normalize=False):
         for i, patient in enumerate(self, start=1):
@@ -174,7 +185,8 @@ class Patient:
         for entry in timeline:
             print(f"{entry[0]}: {entry[1]} - Stage {entry[2]}")
 
-    def make_admission_chain(self, interval="year", admit_types="EM", date_range=None):
+    def make_admission_chain(self, interval="year", values_only=False,
+                             admit_types="EM", date_range=None):
         match interval.lower():
             case "d" | "day":
                 split_admit = lambda admit: admit.split_into_days()
@@ -195,7 +207,6 @@ class Patient:
             admissions[death_date] = 2
 
         admit_dates = list(admissions.keys())
-        non_admissions = {}
         for i, date in enumerate(admit_dates, start=0):
             if i == len(admit_dates)-1:
                 break
@@ -206,4 +217,6 @@ class Patient:
             non_admissions = set(non_admissions) - set(admit_dates)
             non_admissions = {non_admit: 0 for non_admit in non_admissions}
             admissions.update(non_admissions)
+        if values_only:
+            admissions = [x[1] for x in sorted(admissions.items())]
         return admissions
