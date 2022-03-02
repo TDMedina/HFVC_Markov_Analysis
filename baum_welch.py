@@ -17,70 +17,55 @@ params = {"observed_chain": test_obs_chain,
           "epm": test_epm_init,
           "stat_dist": test_sd_init}
 
+# def make_observed_chains_matrix(observed_chains):
+#     max_len = max(len(chain) for chain in observed_chains)
+#     obs_seq_matrix = np.array([chain + ([np.nan] * (max_len - len(chain)))
+#                                for chain in observed_chains])
+#     return obs_seq_matrix
 
-# def bw_alpha_gen(observed_chain, tpm_init, epm_init, stat_dist_init):
-#     states = range(tpm_init.shape[0])
-#     t0 = stat_dist_init * epm_init[:, observed_chain[0]].transpose()
-#     yield t0
-#     for obs in observed_chain[1:]:
-#         t1 = np.array([epm_init[i, obs]*(t0 @ tpm_init[:, i]) for i in states])
-#         yield t1
-#         t0 = t1
-#
-#
-# def bw_beta_gen(observed_chain, tpm_init, epm_init, stat_dist_init=None):
-#     states = range(tpm_init.shape[0])
-#     t1 = np.array([1, 1])
-#     yield t1
-#     for obs in reversed(observed_chain[:-1]):
-#         t0 = np.array([sum(t1*tpm_init[i, :]*epm_init[:, obs]) for i in states])
-#         yield t0
-#         t1 = t0
-#
-#
-# # def bw_gamma(alpha_vector_t, beta_vector_t):
-# #     alphabeta = alpha_vector_t*beta_vector_t
-# #     denom = sum(alphabeta)
-# #     gamma = np.array([x/denom for x in alphabeta])
-# #     return gamma
-#
-#
-# def bw_gamma_gen(observed_chain=None, tpm_init=None, epm_init=None, stat_dist_init=None,
-#                  alphas=None, betas=None):
-#     constants = [observed_chain, tpm_init, epm_init, stat_dist_init]
-#     if alphas is not None and betas is not None:
-#         betas = list(betas)
-#     elif None not in constants:
-#         alphas = bw_alpha_gen(*constants)
-#         betas = list(bw_beta_gen(*constants))
-#     else:
-#         raise ValueError("Missing required argument in constants.")
-#     for alpha, beta in zip(alphas, betas):
-#         gamma = alpha * beta
-#         gamma = gamma / sum(gamma)
-#         yield gamma
-#
-#
-# def bw_xi_gen(observed_chain, tpm_init, epm_init,
-#               alphas=None, betas=None, stat_dist_init=None):
-#     if alphas is None:
-#         alphas = bw_alpha_gen(observed_chain, tpm_init, epm_init, stat_dist_init)
-#     if betas is None:
-#         betas = list(bw_beta_gen(observed_chain, tpm_init, epm_init))
-#
-#
-# def bw_xi(alpha_vector_t, beta_vector_t_plus_1, tpm_init, epm_init, obs_state):
-#     states = range(tpm_init.shape[0])
-#     # xi = np.ndarray([states, states])
-#     # for i in states:
-#     #     for j in states:
-#     #         xi[i,j] = (alpha_vector_t[i]*tpm_init[i,j]*beta_vector_t_plus_1[j]
-#     #                    *epm_init[j][obs_state])
-#     xi = np.reshape([alpha_vector_t[i]*tpm_init[i,j]*beta_vector_t_plus_1[j]
-#                      *epm_init[j][obs_state] for i in states for j in states],
-#                     tpm_init.shape)
-#     xi = xi / xi.sum()
-#     return xi
+
+def make_random_left_right_matrix(n_states):
+    array = []
+    i = n_states
+    while i:
+        array.append([0] * (n_states-i) + [1/i] * i)
+        i -= 1
+    array = np.array(array)
+    return array
+
+
+def make_min_backwards_matrix(n_states, backwards_rate=0.05):
+    array = [[1/n_states]*n_states]
+    i = n_states-1
+    while i:
+        back_rate = backwards_rate / (n_states-i)
+        array.append([back_rate]*(n_states-i) + [(1-backwards_rate)/i]*i)
+        i -= 1
+    array = np.array(array)
+    return array
+
+
+def make_uniform_stochastic_matrix(rows, columns):
+    array = [1/columns]*columns
+    if rows == 1:
+        array = np.array(array)
+    else:
+        array = np.array([array]*rows)
+    return array
+
+# def make_markov_model(chains, n_components, initial_tpm,
+#                       extend_death_state=0):
+#     chains = [chain for chain in chains if chain]
+#     if extend_death_state > 0:
+#         for i, chain in enumerate(chains):
+#             if chain[-1] == 2:
+#                 chains[i] += [2]*extend_death_state
+#     chain_lens = [len(chain) for chain in chains]
+#     chain_array = [[val] for chain in chains for val in chain]
+#     model = hmm.MultinomialHMM(n_components, init_params="se")
+#     model.transmat_ = initial_tpm
+#     model.fit(chain_array, chain_lens)
+#     return model
 
 
 def calculate_alphas(observed_chain, tpm, epm, stat_dist):
