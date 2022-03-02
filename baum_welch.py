@@ -1,15 +1,16 @@
+from collections import namedtuple
+
 import numpy as np
-import multiprocessing as mp
 import random
 
 
-test_obs_chain = [0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0]
-multi_obs_chain = [[random.randint(0, 1) for _ in range(10)] for i in range(100)]
+test_obs_chain = np.array([0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0])
+multi_obs_chain = [[random.randint(0, 1) for _ in range(20)] for i in range(10000)]
 
-test_tpm_init = np.array([[0.5, 0.5],
-                          [0.5, 0.5]])
+test_tpm_init = np.array([[0.1, 0.9],
+                          [0.4, 0.6]])
 test_epm_init = np.array([[0.5, 0.5],
-                          [0.5, 0.5]])
+                          [0.9, 0.1]])
 test_sd_init = np.array([0.5, 0.5])
 
 params = {"observed_chain": test_obs_chain,
@@ -112,76 +113,127 @@ def calculate_gammas_and_xis(observed_chain, tpm, epm, stat_dist):
     xis = calculate_xis(alphas, betas, observed_chain, tpm, epm)
     return gammas, xis
 
-def update_tpm(xis, gammas):
-    size = len(gammas[0])
-    tpm = sum(xis) / np.array([sum(gammas[:-1])]*size).transpose()
+
+def update_tpm(gammas, xis):
+    tpm = xis.sum(0) / gammas[:, :-1].sum(1).reshape(-1, 1)
     return tpm
 
-def update_tpm2(gammas, xis):
-    size = len(gammas[0])
-    tpm = sum(xis) / sum(gammas[:-1]).reshape(size, 1)
+
+def update_epm(gammas, observed_chain, shape):
+    updated_epm = np.zeros(shape)
+    for obs, gamma in zip(observed_chain, gammas.transpose()):
+        updated_epm[:, obs] += gamma
+    updated_epm = updated_epm / gammas.sum(1).reshape(shape[0], 1)
+    return updated_epm
+
+
+def baum_welch(observed_chain, tpm, epm, stat_dist, max_iterations=1000, atol=1e-3):
+    for i in range(1, max_iterations+1):
+        gammas, xis = calculate_gammas_and_xis(observed_chain, tpm, epm, stat_dist)
+        new_stat_dist = gammas[:, 0]
+        new_tpm = update_tpm(gammas, xis)
+        new_epm = update_epm(gammas, observed_chain, epm.shape)
+
+        if all([np.allclose(stat_dist, new_stat_dist, atol=atol),
+                np.allclose(tpm, new_tpm, atol=atol),
+                np.allclose(epm, new_epm, atol=atol)]):
+            print(f"Converged in {i} steps.")
+            break
+
+        stat_dist = new_stat_dist
+        tpm = new_tpm
+        epm = new_epm
+    else:
+        print(f"Max iterations ({max_iterations}) reached without convergence.")
+    return stat_dist, tpm, epm
+
+
+# %% Multichain
+def make_gamma_matrix(all_gammas, max_len):
+    all_gammas = np.array([
+        np.pad(array=gammas,
+               pad_width=[(0, 0), (0, max_len - gammas.shape[1])],
+               constant_values=np.nan)
+        for gammas in all_gammas
+        ])
+    return all_gammas
+
+
+def make_xi_matrix(all_xis, max_len):
+    max_len = max_len-1
+    all_xis = np.array([
+        np.pad(array=xis,
+               pad_width=[(0, max_len - xis.shape[0]), (0, 0), (0, 0)],
+               constant_values=np.nan)
+        for xis in all_xis if xis.size > 0
+        ])
+    return all_xis
+
+
+# def multichain_update_tpm(all_gammas, all_xis, n_states):
+#     tpm = np.nansum(all_xis, (0, 1))
+#     denom = np.nansum(all_gammas[:, :, :-1], (0, 2))
+#     tpm = tpm / denom.reshape(-1, 1)
+#     return tpm
+
+def multichain_update_tpm(all_gammas, all_xis, n_states):
+    tpm = np.nansum(all_xis, (0, 1))
+    denom = np.array([0., 0.])
+    for gammas in all_gammas:
+        denom += gammas[~np.isnan(gammas)].reshape(n_states, -1)[:, :-1].sum(1)
+    # denom = np.nansum(all_gammas[:, :, :-1], (0, 2))
+    tpm = tpm / denom.reshape(-1, 1)
     return tpm
 
-def update_epm(gammas, observed_chain):
-    size = len(gammas[0])
-    denom = np.array([sum(gammas)]*size).transpose()
-    epm = [np.array([0, 0]), np.array([0, 0])]
-    for obs, gamma in zip(observed_chain, gammas):
-        epm[obs] = epm[obs] + gamma
-    epm = np.array(epm).transpose()
-    epm = epm / denom
+
+def multichain_update_epm(all_gammas, observed_chains, shape):
+    epm = np.zeros(shape)
+    for observed_chain, gammas in zip(observed_chains, all_gammas):
+        for obs, gamma in zip(observed_chain, gammas.transpose()):
+            epm[:, obs] += gamma
+    gamma_sum = np.nansum(all_gammas, (0, 2))
+    epm = epm / gamma_sum.reshape(shape[0], 1)
     return epm
 
-def update_epm2(gammas, observed_chain):
-    size = len(gammas[0])
-    denom = sum(gammas).reshape(size, 1)
-    epm = [np.array([0, 0]), np.array([0, 0])]
-    for obs, gamma in zip(observed_chain, gammas):
-        epm[obs] = epm[obs] + gamma
-    epm = np.array(epm).transpose()
-    epm = epm / denom
-    return epm
 
-
-def baum_welch(observed_chain, tpm, epm, stat_dist, iterations=100):
-    for _ in range(iterations):
-        alphas = calculate_alphas(observed_chain, tpm, epm, stat_dist)
-        betas = calculate_betas(observed_chain, tpm, epm)
-        gammas = calculate_gammas(alphas, betas)
-        xis = calculate_xis(alphas, betas, tpm, epm, observed_chain)
-
-        stat_dist = gammas[0]
-        tpm = update_tpm(xis, gammas)
-        epm = update_epm(gammas, observed_chain)
-    return tpm, epm, stat_dist
-
-
-def baum_welch2(observed_chain, tpm, epm, stat_dist, iterations=100):
-    for _ in range(iterations):
-        gammas, xis = calculate_gammas_and_xis2(observed_chain, tpm, epm, stat_dist)
-        stat_dist = gammas[0]
-        tpm = update_tpm2(gammas, xis)
-        epm = update_epm2(gammas, observed_chain)
-    return tpm, epm, stat_dist
-
-def multichain_update_tpm(all_gammas, all_xis):
-    size = len(all_gammas[0][0])
-    tpm = np.array(
-        [sum([gamma for gammas in all_gammas for gamma in gammas[:-1]])]*size
-        ).transpose()
-    return tpm
-
-
-def multichain_baum_welch(observed_chains, tpm, epm, stat_dist, iterations=100):
+def multichain_baum_welch(observed_chains, tpm, epm, stat_dist,
+                          max_iterations=1000, atol=1e-3):
+    # Setup parameters.
     num_chains = len(observed_chains)
-    size = tpm.shape[0]
-    for _ in range(iterations):
+    n_states = tpm.shape[0]
+    max_len = max((len(chain) for chain in observed_chains))
+
+    # Iterate.
+    for i in range(1, max_iterations+1):
+        print(f"Iteration: {i}")
         all_gammas, all_xis = zip(*[calculate_gammas_and_xis(chain, tpm, epm, stat_dist)
                                     for chain in observed_chains])
-        stat_dist = sum([gammas[0] for gammas in all_gammas]) / num_chains
-        gamma_sum = sum([gamma for gammas in all_gammas for gamma in gammas[:-1]])
-        gamma_sum = np.array([gamma_sum]*size).transpose()
-        tpm = sum([xi for xis in all_xis for xi in xis]) / gamma_sum
+        all_gammas = make_gamma_matrix(all_gammas, max_len)
+        all_xis = make_xi_matrix(all_xis, max_len)
+
+        new_stat_dist = all_gammas[:, :, 0].sum(0) / num_chains
+        new_tpm = multichain_update_tpm(all_gammas, all_xis, n_states)
+        new_epm = multichain_update_epm(all_gammas, observed_chains, epm.shape)
+
+        # Check for convergence.
+        if all([np.allclose(stat_dist, new_stat_dist, atol=atol),
+                np.allclose(tpm, new_tpm, atol=atol),
+                np.allclose(epm, new_epm, atol=atol)]):
+            print(f"Converged in {i} steps.")
+            break
+
+        # Assign new parameters.
+        stat_dist = new_stat_dist
+        tpm = new_tpm
+        epm = new_epm
+
+    # Notify if no convergence.
+    else:
+        print(f"Max iterations ({max_iterations}) reached without convergence.")
+    return stat_dist, tpm, epm
+
+
+TestModel = namedtuple("TestModel", ["alphas", "betas", "gammas", "xis", "single_bw", "multi_bw"])
 
 
 # def parallel_multichain_baum_welch(observed_chains, tpm, epm, stat_dist, iterations=100):
