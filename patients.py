@@ -3,11 +3,14 @@
 from datetime import datetime, timedelta
 from warnings import warn
 
-from matplotlib import pyplot as plt
 import pandas as pd
+import plotly.graph_objects as go
+import plotly.io as pio
 
 from admissions import AdmissionList, Admission
-from utilities import NamedDate
+from utilities import NamedDate, advance_month, advance_year
+
+pio.renderers.default = "browser"
 
 class PatientDatabase:
     def __init__(self, patients=None):
@@ -60,33 +63,50 @@ class PatientDatabase:
         return self.__len__()
 
     def make_admission_chains(self, interval="year", values_only=False,
-                              admit_types="EM", date_range=None):
-        chains = {patient.id: patient.make_admission_chain(interval, values_only,
-                                                           admit_types, date_range)
-                  for patient in self}
+                              admit_types="EM", date_range=None, include_empties=True,
+                              as_arrays=False):
+        chains = {patient.id: chain for patient in self
+                  if (chain := patient.make_admission_chain(interval, values_only,
+                                                            admit_types, date_range))
+                      or include_empties}
+        # if not include_empties:
+        #     chains = {name: chain for name, chain in chains.items() if chain}
         if values_only:
             chains = list(chains.values())
         return chains
 
-    def plot_patient_chains(self, normalize=False):
+    def plot_patient_chains2(self, interval="year", admit_types="EM", date_range=None,
+                             normalize=False):
+        fig = go.Figure()
         for i, patient in enumerate(self, start=1):
-            chain = patient.years_admitted()
+            chain = patient.make_admission_chain(interval, False, admit_types, date_range)
+            if not chain:
+                continue
             if normalize:
-                chain = {year-min(chain): admit for year, admit in chain.items()}
-            admits = [year for year in chain if chain[year] == "Admitted"]
-            # non_admits = [year for year in chain if chain[year] == "Not admitted"]
-            death = [year for year in chain if chain[year] == "Death"]
-            # line = chain.keys()
-            plt.plot(chain.keys(), [i]*len(chain), color="black")
-            plt.plot(admits, [i]*len(admits), color="red", marker="o", linestyle="")
-            plt.plot(death, [i]*len(death), color="red", marker="X", linestyle="")
+                chain = {i: admit for i, (date, admit)
+                         in enumerate(chain, start=1)}
+            admits = [date for date, admit in chain if admit == 1]
+            death = [date for date, admit in chain if admit == 2]
+            fig.add_trace(go.Scatter(
+                x=[date for date, admit in chain], y=[i]*len(chain), name=patient.id,
+                mode="lines", line={"color": "black"},
+                legendgroup=patient.id,
+                hovertemplate="No admission: %{x}")
+                )
+            fig.add_trace(go.Scatter(
+                x=admits, y=[i]*len(admits), name=patient.id,
+                mode="markers", marker={"color": "blue", "symbol": "circle"},
+                legendgroup=patient.id, showlegend=False,
+                hovertemplate="Admissions: %{x}")
+                )
+            fig.add_trace(go.Scatter(
+                x=death, y=[i]*len(death), name=patient.id,
+                mode="markers", marker={"color": "red", "symbol": "x"},
+                legendgroup=patient.id, showlegend=False,
+                hovertemplate="Death: %{x}")
+                )
+        fig.show()
         return
-
-    # def make_chain_table(self):
-    #     chains = {patient.id: patient.years_admitted() for patient in self}
-    #     years = {year for chain in chains.values() for year in chain}
-    #     min_year = min(years)
-    #     max_year = max(years)
 
 
 class Patient:
@@ -190,20 +210,28 @@ class Patient:
         match interval.lower():
             case "d" | "day":
                 split_admit = lambda admit: admit.split_into_days()
+                advance_date = lambda date: date + timedelta(1)
             case "w" | "week":
                 split_admit = lambda admit: admit.split_into_isoweeks()
+                advance_date = lambda date: date + timedelta(7)
             case "m" | "month":
                 split_admit = lambda admit: admit.split_into_months()
+                advance_date = lambda date: advance_month(date)
             case "y" | "year":
                 split_admit = lambda admit: admit.split_into_years()
+                advance_date = lambda date: advance_year(date)
             case _:
                 raise ValueError("Unknown interval type.")
+
         admissions = self.admissions.filter_admissions(admit_types, date_range)
         admissions = {date: 1 for admit in admissions for date in split_admit(admit)}
 
         if self.deceased is True and not pd.isna(self.date_of_death):
             death_date = Admission(self.id, "Death", -1, self.date_of_death, 1)
             death_date = split_admit(death_date)[0]
+            # Advance death date to next time period if masking admissions.
+            if death_date in admissions:
+                death_date = advance_date(death_date)
             admissions[death_date] = 2
 
         admit_dates = list(admissions.keys())
@@ -219,4 +247,5 @@ class Patient:
             admissions.update(non_admissions)
         if values_only:
             admissions = [x[1] for x in sorted(admissions.items())]
-        return admissions
+            return admissions
+        return list(admissions.items())
