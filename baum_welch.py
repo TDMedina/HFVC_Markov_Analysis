@@ -89,43 +89,34 @@ def calculate_alphas(observed_chain, tpm, epm, stat_dist):
     for obs in observed_chain[1:]:
         t0 = alphas[-1]
         alphas.append(np.array([epm[i, obs] * (t0 @ tpm[:, i]) for i in states]))
+    alphas = np.array(alphas).transpose()
     return alphas
 
 
-def calculate_betas(observed_chain, tpm, epm, stat_dist=None):
-    states = range(tpm.shape[0])
-    betas = [np.array([1, 1])]
-    for obs in reversed(observed_chain[:-1]):
+def calculate_betas(observed_chain, tpm, epm):
+    states = tpm.shape[0]
+    betas = [np.array([1]*states)]
+    for obs in reversed(observed_chain[1:]):
         t1 = betas[-1]
-        t0 = np.array([sum(t1*tpm[i, :]*epm[:, obs]) for i in states])
+        t0 = np.array([sum(t1*tpm[i, :]*epm[:, obs]) for i in range(states)])
         betas.append(t0)
     betas.reverse()
+    betas = np.array(betas).transpose()
     return betas
 
 
 def calculate_gammas(alphas, betas):
-    gammas = [alpha * beta for alpha, beta in zip(alphas, betas)]
-    sum_gammas = sum(gammas)
-    gammas = [gamma / sum_gammas for gamma in gammas]
+    gammas = alphas * betas
+    gammas = gammas / gammas.sum(0)
     return gammas
 
 
-def calculate_xis(alphas, betas, tpm, epm, observed_chain):
-    size = tpm.shape[0]
-    xis = [np.array([alpha]*size).transpose()
-           *np.array([beta]*size)
-           *np.array([epm[:,obs]]*size)
-           *tpm
-           for alpha, beta, obs in zip(alphas, betas[1:], observed_chain[1:])]
-    xis = [xi / xi.sum() for xi in xis]
-    return xis
-
-
-def calculate_xis2(alphas, betas, tpm, epm, observed_chain):
-    size = tpm.shape[0]
-    xis = [alpha.reshape(size, 1) * beta * epm[:, obs] * tpm
-           for alpha, beta, obs in zip(alphas, betas[1:], observed_chain[1:])]
-    xis = [xi / xi.sum() for xi in xis]
+def calculate_xis(alphas, betas, observed_chain, tpm, epm):
+    xis = [alpha.reshape(-1, 1) * beta * tpm * epm[:, obs]
+           for alpha, beta, obs in zip(alphas.transpose(),
+                                       betas.transpose()[1:],
+                                       observed_chain[1:])]
+    xis = np.array([xi / xi.sum() for xi in xis])
     return xis
 
 
@@ -133,14 +124,7 @@ def calculate_gammas_and_xis(observed_chain, tpm, epm, stat_dist):
     alphas = calculate_alphas(observed_chain, tpm, epm, stat_dist)
     betas = calculate_betas(observed_chain, tpm, epm)
     gammas = calculate_gammas(alphas, betas)
-    xis = calculate_xis2(alphas, betas, tpm, epm, observed_chain)
-    return gammas, xis
-
-def calculate_gammas_and_xis2(observed_chain, tpm, epm, stat_dist):
-    alphas = calculate_alphas(observed_chain, tpm, epm, stat_dist)
-    betas = calculate_betas(observed_chain, tpm, epm)
-    gammas = calculate_gammas(alphas, betas)
-    xis = calculate_xis(alphas, betas, tpm, epm, observed_chain)
+    xis = calculate_xis(alphas, betas, observed_chain, tpm, epm)
     return gammas, xis
 
 def update_tpm(xis, gammas):
