@@ -4,25 +4,18 @@ import numpy as np
 import random
 
 
-test_obs_chain = np.array([0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0])
-multi_obs_chain = [[random.randint(0, 1) for _ in range(20)] for i in range(10000)]
+def make_random_init_params(n_hidden_states, n_obs_states):
+    tpm = np.random.random([n_hidden_states, n_hidden_states])
+    tpm = tpm/tpm.sum(1).reshape([-1, 1])
 
-test_tpm_init = np.array([[0.1, 0.9],
-                          [0.4, 0.6]])
-test_epm_init = np.array([[0.5, 0.5],
-                          [0.9, 0.1]])
-test_sd_init = np.array([0.5, 0.5])
+    epm = np.random.random([n_hidden_states, n_obs_states])
+    epm = epm / epm.sum(1).reshape([-1, 1])
 
-params = {"observed_chain": test_obs_chain,
-          "tpm": test_tpm_init,
-          "epm": test_epm_init,
-          "stat_dist": test_sd_init}
+    sd = np.random.random([1, n_hidden_states])[0]
+    sd = sd / sd.sum()
 
-# def make_observed_chains_matrix(observed_chains):
-#     max_len = max(len(chain) for chain in observed_chains)
-#     obs_seq_matrix = np.array([chain + ([np.nan] * (max_len - len(chain)))
-#                                for chain in observed_chains])
-#     return obs_seq_matrix
+    params = {"tpm": tpm, "epm": epm, "stat_dist": sd}
+    return params
 
 
 def make_random_left_right_matrix(n_states):
@@ -170,15 +163,9 @@ def make_xi_matrix(all_xis, max_len):
     return all_xis
 
 
-# def multichain_update_tpm(all_gammas, all_xis, n_states):
-#     tpm = np.nansum(all_xis, (0, 1))
-#     denom = np.nansum(all_gammas[:, :, :-1], (0, 2))
-#     tpm = tpm / denom.reshape(-1, 1)
-#     return tpm
-
 def multichain_update_tpm(all_gammas, all_xis, n_states):
     tpm = np.nansum(all_xis, (0, 1))
-    denom = np.array([0., 0.])
+    denom = np.array([0.] * n_states)
     for gammas in all_gammas:
         denom += gammas[~np.isnan(gammas)].reshape(n_states, -1)[:, :-1].sum(1)
     # denom = np.nansum(all_gammas[:, :, :-1], (0, 2))
@@ -245,49 +232,3 @@ TestModel = namedtuple("TestModel", ["alphas", "betas", "gammas", "xis", "single
 #                                        [tpm]*num_chains,
 #                                        [epm]*num_chains,
 #                                        [stat_dist]*num_chains))
-
-
-# if __name__ == "__main__":
-#     alpha_jenny = bw_alpha_gen(test_obs_chain, test_tpm_init, test_epm_init, test_sd_init)
-#     beta_jenny = bw_beta_gen(test_obs_chain, test_tpm_init, test_epm_init)
-
-# def forward(V, a, b, initial_distribution):
-#     alpha = np.zeros((V.shape[0], a.shape[0]))
-#     alpha[0, :] = initial_distribution * b[:, V[0]]
-#
-#     for t in range(1, V.shape[0]):
-#         for j in range(a.shape[0]):
-#             # Matrix Computation Steps
-#             #                  ((1x2) . (1x2))      *     (1)
-#             #                        (1)            *     (1)
-#             alpha[t, j] = alpha[t - 1] @ a[:, j] * b[j, V[t]]
-#
-#     return alpha
-#
-# def baum_welch(O, a, b, initial_distribution, n_iter=100):
-#     #http://www.adeveloperdiary.com/data-science/machine-learning/derivation-and-implementation-of-baum-welch-algorithm-for-hidden-markov-model/
-#     M = a.shape[0]
-#     T = len(O)
-#     for n in range(n_iter):
-#         ###estimation step
-#         alpha = forward(O, a, b, initial_distribution)
-#         beta = backward(O, a, b)
-#         xi = np.zeros((M, M, T - 1))
-#         for t in range(T - 1):
-#             # joint probab of observed data up to time t @ transition prob *
-#             #emisssion prob at t+1 @ joint probab of observed data from at t+1
-#             denominator = (alpha[t, :].T @ a * b[:, O[t + 1]].T) @ beta[t + 1, :]
-#             for i in range(M):
-#                 numerator = alpha[t, i] * a[i, :] * b[:, O[t + 1]].T * beta[t + 1, :].T
-#                 xi[i, :, t] = numerator / denominator
-#         gamma = np.sum(xi, axis=1)
-#         ### maximization step
-#         a = np.sum(xi, 2) / np.sum(gamma, axis=1).reshape((-1, 1))
-#         # Add additional T'th element in gamma
-#         gamma = np.hstack((gamma, np.sum(xi[:, :, T - 2], axis=0).reshape((-1, 1))))
-#         K = b.shape[1]
-#         denominator = np.sum(gamma, axis=1)
-#         for l in range(K):
-#             b[:, l] = np.sum(gamma[:, O == l], axis=1)
-#         b = np.divide(b, denominator.reshape((-1, 1)))
-#     return a, b
