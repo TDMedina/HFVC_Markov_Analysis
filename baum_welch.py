@@ -27,10 +27,10 @@ def make_random_init_params(n_hidden_states, n_obs_states):
     epm = np.random.random([n_hidden_states, n_obs_states])
     epm = epm / epm.sum(1).reshape([-1, 1])
 
-    sd = np.random.random([1, n_hidden_states])[0]
-    sd = sd / sd.sum()
+    init_dist = np.random.random([1, n_hidden_states])[0]
+    init_dist = init_dist / init_dist.sum()
 
-    params = {"tpm": tpm, "epm": epm, "stat_dist": sd}
+    params = {"tpm": tpm, "epm": epm, "init_dist": init_dist}
     return params
 
 
@@ -64,10 +64,9 @@ def make_uniform_stochastic_matrix(rows, columns):
     return array
 
 
-
-def calculate_alphas(observed_chain, tpm, epm, stat_dist):
+def calculate_alphas(observed_chain, tpm, epm, init_dist):
     states = range(tpm.shape[0])
-    alphas = [stat_dist * epm[:, observed_chain[0]]]
+    alphas = [init_dist * epm[:, observed_chain[0]]]
     for obs in observed_chain[1:]:
         t0 = alphas[-1]
         alphas.append(np.array([epm[i, obs] * (t0 @ tpm[:, i]) for i in states]))
@@ -102,8 +101,8 @@ def calculate_xis(alphas, betas, observed_chain, tpm, epm):
     return xis
 
 
-def calculate_gammas_and_xis(observed_chain, tpm, epm, stat_dist):
-    alphas = calculate_alphas(observed_chain, tpm, epm, stat_dist)
+def calculate_gammas_and_xis(observed_chain, tpm, epm, init_dist):
+    alphas = calculate_alphas(observed_chain, tpm, epm, init_dist)
     betas = calculate_betas(observed_chain, tpm, epm)
     gammas = calculate_gammas(alphas, betas)
     xis = calculate_xis(alphas, betas, observed_chain, tpm, epm)
@@ -123,25 +122,25 @@ def update_epm(gammas, observed_chain, shape):
     return updated_epm
 
 
-def baum_welch(observed_chain, tpm, epm, stat_dist, max_iterations=1000, atol=1e-3):
+def baum_welch(observed_chain, tpm, epm, init_dist, max_iterations=1000, atol=1e-3):
     for i in range(1, max_iterations+1):
-        gammas, xis = calculate_gammas_and_xis(observed_chain, tpm, epm, stat_dist)
-        new_stat_dist = gammas[:, 0]
+        gammas, xis = calculate_gammas_and_xis(observed_chain, tpm, epm, init_dist)
+        new_init_dist = gammas[:, 0]
         new_tpm = update_tpm(gammas, xis)
         new_epm = update_epm(gammas, observed_chain, epm.shape)
 
-        if all([np.allclose(stat_dist, new_stat_dist, atol=atol),
+        if all([np.allclose(init_dist, new_init_dist, atol=atol),
                 np.allclose(tpm, new_tpm, atol=atol),
                 np.allclose(epm, new_epm, atol=atol)]):
             print(f"Converged in {i} steps.")
             break
 
-        stat_dist = new_stat_dist
+        init_dist = new_init_dist
         tpm = new_tpm
         epm = new_epm
     else:
         print(f"Max iterations ({max_iterations}) reached without convergence.")
-    return stat_dist, tpm, epm
+    return init_dist, tpm, epm
 
 
 # %% Multichain
@@ -186,7 +185,7 @@ def multichain_update_epm(all_gammas, observed_chains, shape):
     return epm
 
 
-def multichain_baum_welch(observed_chains, tpm, epm, stat_dist,
+def multichain_baum_welch(observed_chains, tpm, epm, init_dist,
                           max_iterations=1000, atol=1e-3):
     # Setup parameters.
     num_chains = len(observed_chains)
@@ -196,24 +195,24 @@ def multichain_baum_welch(observed_chains, tpm, epm, stat_dist,
     # Iterate.
     for i in range(1, max_iterations+1):
         print(f"Iteration: {i}")
-        all_gammas, all_xis = zip(*[calculate_gammas_and_xis(chain, tpm, epm, stat_dist)
+        all_gammas, all_xis = zip(*[calculate_gammas_and_xis(chain, tpm, epm, init_dist)
                                     for chain in observed_chains])
         all_gammas = make_gamma_matrix(all_gammas, max_len)
         all_xis = make_xi_matrix(all_xis, max_len)
 
-        new_stat_dist = all_gammas[:, :, 0].sum(0) / num_chains
+        new_init_dist = all_gammas[:, :, 0].sum(0) / num_chains
         new_tpm = multichain_update_tpm(all_gammas, all_xis, n_states)
         new_epm = multichain_update_epm(all_gammas, observed_chains, epm.shape)
 
         # Check for convergence.
-        if all([np.allclose(stat_dist, new_stat_dist, atol=atol),
+        if all([np.allclose(init_dist, new_init_dist, atol=atol),
                 np.allclose(tpm, new_tpm, atol=atol),
                 np.allclose(epm, new_epm, atol=atol)]):
             print(f"Converged in {i} steps.")
             break
 
         # Assign new parameters.
-        stat_dist = new_stat_dist
+        init_dist = new_init_dist
         tpm = new_tpm
         epm = new_epm
 
