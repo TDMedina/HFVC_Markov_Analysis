@@ -1,7 +1,11 @@
 from collections import namedtuple
+import random
 
 from hmmlearn import hmm
 import numpy as np
+
+
+TestModel = namedtuple("TestModel", ["init_dist", "tpm", "epm"])
 
 
 def make_hmmlearn_model(chains, n_components, tpm, epm, init_dist,
@@ -219,10 +223,7 @@ def multichain_baum_welch(observed_chains, tpm, epm, init_dist,
     # Notify if no convergence.
     else:
         print(f"Max iterations ({max_iterations}) reached without convergence.")
-    return init_dist, tpm, epm
-
-
-TestModel = namedtuple("TestModel", ["init_dist", "tpm", "epm"])
+    return TestModel(init_dist, tpm, epm)
 
 
 def split_test_and_train(chains, proportion=10):
@@ -236,7 +237,7 @@ def split_test_and_train(chains, proportion=10):
 
 
 def predict_next_emission(chain, tpm, epm, init_dist):
-    alpha = calculate_alphas(chain, tpm, epm, init_dist)[:,-1]
+    alpha = calculate_alphas(chain, tpm, epm, init_dist)[:, -1]
     alpha = alpha / alpha.sum()
     margins = tpm @ epm
     probs = alpha.reshape(-1, 1) * margins
@@ -255,12 +256,13 @@ def test_hmm_model(test_chains, model):
     return results
 
 
-# def parallel_multichain_baum_welch(observed_chains, tpm, epm, stat_dist, iterations=100):
-#     cpu_count = mp.cpu_count()
-#     num_chains = len(observed_chains)
-#     for _ in range(iterations):
-#         mp.Pool(cpu_count).starmap(calculate_gamma_xi,
-#                                    zip(observed_chains,
-#                                        [tpm]*num_chains,
-#                                        [epm]*num_chains,
-#                                        [stat_dist]*num_chains))
+def main_test():
+    init_params = make_random_init_params(5, 3)
+    seqs = [random.choices(range(3), k=random.choice(range(1, 11)))
+            for _ in range(50)]
+    markov_model = multichain_baum_welch(observed_chains=seqs, **init_params)
+    return init_params, seqs, markov_model
+
+
+if __name__ == "__main__":
+    markov_test = main_test()
