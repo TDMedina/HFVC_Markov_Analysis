@@ -219,10 +219,40 @@ def multichain_baum_welch(observed_chains, tpm, epm, init_dist,
     # Notify if no convergence.
     else:
         print(f"Max iterations ({max_iterations}) reached without convergence.")
-    return stat_dist, tpm, epm
+    return init_dist, tpm, epm
 
 
-TestModel = namedtuple("TestModel", ["alphas", "betas", "gammas", "xis", "single_bw", "multi_bw"])
+TestModel = namedtuple("TestModel", ["init_dist", "tpm", "epm"])
+
+
+def split_test_and_train(chains, proportion=10):
+    n_chains = len(chains)
+    divider = n_chains // proportion
+    shuffle = np.random.permutation(range(len(chains)))
+    train = [chains[i] for i in shuffle[divider:]]
+    test = [chains[i] for i in shuffle[:divider]]
+    test = [(chain[:-1], chain[-1]) for chain in test]
+    return train, test
+
+
+def predict_next_emission(chain, tpm, epm, init_dist):
+    alpha = calculate_alphas(chain, tpm, epm, init_dist)[:,-1]
+    alpha = alpha / alpha.sum()
+    margins = tpm @ epm
+    probs = alpha.reshape(-1, 1) * margins
+    probs = probs.sum(0)
+    return probs
+
+
+def test_hmm_model(test_chains, model):
+    results = []
+    for chain, answer in test_chains:
+        if not chain:
+            continue
+        probs = predict_next_emission(chain, model.tpm, model.epm, model.init_dist)
+        prediction = np.argmax(probs)
+        results.append((prediction == answer, prediction, probs))
+    return results
 
 
 # def parallel_multichain_baum_welch(observed_chains, tpm, epm, stat_dist, iterations=100):
