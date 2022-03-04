@@ -1,7 +1,23 @@
 from collections import namedtuple
 
+from hmmlearn import hmm
 import numpy as np
-import random
+
+
+def make_hmmlearn_model(chains, n_components, tpm, epm, init_dist,
+                        extend_death_state=0):
+    if extend_death_state > 0:
+        for i, chain in enumerate(chains):
+            if chain[-1] == 2:
+                chains[i] += [2]*extend_death_state
+    chain_lens = [len(chain) for chain in chains]
+    chain_array = [[val] for chain in chains for val in chain]
+    model = hmm.MultinomialHMM(n_components, init_params="", n_iter=1000, tol=0.001)
+    model.transmat_ = tpm
+    model.emissionprob_ = epm
+    model.startprob_ = init_dist
+    model.fit(chain_array, chain_lens)
+    return model
 
 
 def make_random_init_params(n_hidden_states, n_obs_states):
@@ -47,19 +63,6 @@ def make_uniform_stochastic_matrix(rows, columns):
         array = np.array([array]*rows)
     return array
 
-# def make_markov_model(chains, n_components, initial_tpm,
-#                       extend_death_state=0):
-#     chains = [chain for chain in chains if chain]
-#     if extend_death_state > 0:
-#         for i, chain in enumerate(chains):
-#             if chain[-1] == 2:
-#                 chains[i] += [2]*extend_death_state
-#     chain_lens = [len(chain) for chain in chains]
-#     chain_array = [[val] for chain in chains for val in chain]
-#     model = hmm.MultinomialHMM(n_components, init_params="se")
-#     model.transmat_ = initial_tpm
-#     model.fit(chain_array, chain_lens)
-#     return model
 
 
 def calculate_alphas(observed_chain, tpm, epm, stat_dist):
