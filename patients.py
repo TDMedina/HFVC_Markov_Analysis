@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import plotly.io as pio
 
 from admissions import AdmissionList, Admission
-from utilities import NamedDate, advance_month, advance_year
+import utilities as ut
 
 pio.renderers.default = "browser"
 
@@ -74,6 +74,11 @@ class PatientDatabase:
         if values_only:
             chains = list(chains.values())
         return chains
+
+    # def make_stage_chains(self, interval="year",admit_types="EM", date_range=None):
+    #     chains = {patient.id: chain for patient in self
+    #               if (chain := patient.make_stage_chain(interval, admit_types))}
+    #     return chains
 
     def plot_patient_chains2(self, interval="year", admit_types="EM", date_range=None,
                              normalize=False):
@@ -158,10 +163,10 @@ class Patient:
 
     def make_timeline(self, filter_admission_type=""):
         events = [
-            ["Birth", NamedDate("Birth", self.date_of_birth)],
-            ["Min Clinic Date", NamedDate("Min Clinic Date", self.min_clinic_date)],
-            ["Follow-Up Date", NamedDate("Follow-Up Date", self.follow_up_date)],
-            ["Death", NamedDate("Death", self.date_of_death)]
+            ["Birth", ut.NamedDate("Birth", self.date_of_birth)],
+            ["Min Clinic Date", ut.NamedDate("Min Clinic Date", self.min_clinic_date)],
+            ["Follow-Up Date", ut.NamedDate("Follow-Up Date", self.follow_up_date)],
+            ["Death", ut.NamedDate("Death", self.date_of_death)]
             ]
         admissions = self.admissions.filter_admissions(filter_admission_type, None, True)
         events += admissions.get_all("lol")
@@ -171,13 +176,13 @@ class Patient:
 
     def show_timeline(self, filter_admission_type=""):
         timeline = self.make_timeline(filter_admission_type)
-        timeline = [(x[0], x[1].date) if isinstance(x[1], NamedDate)
+        timeline = [(x[0], x[1].date) if isinstance(x[1], ut.NamedDate)
                     else (x[0], x[1]) for x in timeline]
         for entry in timeline:
             print(f"{entry[0]}: {entry[1]}")
 
     def determine_stage(self, reference_date=datetime.today().date()):
-        date_range = [reference_date - timedelta(365), reference_date + timedelta(1)]
+        date_range = [reference_date - timedelta(365), reference_date]
         stage_b = self.other_flags["StageB_FLAG_BL"]
         if self.deceased and self.date_of_death <= reference_date:
             return 5
@@ -190,6 +195,48 @@ class Patient:
                 return 3
             return 4
 
+    def make_stage_chain(self, interval="year", admit_types="EM", values_only=False,
+                         ):
+        match interval.lower():
+            case "d" | "day":
+                rollback = lambda date: date - timedelta(1)
+                advance_date = lambda date: date + timedelta(1)
+            case "w" | "week":
+                rollback = lambda date: ut.rollback_week_to_monday(date)
+                advance_date = lambda date: date + timedelta(7)
+            case "m" | "month":
+                rollback = lambda date: ut.rollback_month_to_first(date)
+                advance_date = lambda date: ut.advance_month(date)
+            case "y" | "year":
+                rollback = lambda date: ut.rollback_year_to_first(date)
+                advance_date = lambda date: ut.advance_year(date)
+            case _:
+                raise ValueError("Unknown interval type.")
+        admissions = self.admissions.filter_admissions(admit_types)
+        admissions.sort(key=lambda admit: admit.date)
+
+        if self.deceased is True and not pd.isna(self.date_of_death):
+            death = Admission(self.id, "Death", -1, self.date_of_death, 1)
+            admissions.append(death)
+
+        if not admissions:
+            if values_only:
+                return []
+            return {}
+
+        position = rollback(admissions[0].date)
+        last = advance_date(admissions[-1].date + timedelta(admissions[-1].length_of_stay))
+        stage_chain = {}
+        min_stage = 1
+        while position <= last:
+            stage = max(min_stage, self.determine_stage(position))
+            min_stage = stage
+            stage_chain[position] = stage
+            position = advance_date(position)
+        if values_only:
+            stage_chain = list(stage_chain.values())
+        return stage_chain
+
     def make_staged_timeline(self, filter_admission_type=""):
         timeline = self.make_timeline(filter_admission_type)
         stage = 1
@@ -198,9 +245,9 @@ class Patient:
             timeline[i].append(stage)
         return timeline
 
-    def show_staged_timeline(self):
-        timeline = self.make_staged_timeline()
-        timeline = [(x[0], x[1].date, x[2]) if isinstance(x[1], NamedDate)
+    def show_staged_timeline(self, filter_admission_type=""):
+        timeline = self.make_staged_timeline(filter_admission_type)
+        timeline = [(x[0], x[1].date, x[2]) if isinstance(x[1], ut.NamedDate)
                     else (x[0], x[1], x[2]) for x in timeline]
         for entry in timeline:
             print(f"{entry[0]}: {entry[1]} - Stage {entry[2]}")
@@ -216,10 +263,10 @@ class Patient:
                 advance_date = lambda date: date + timedelta(7)
             case "m" | "month":
                 split_admit = lambda admit: admit.split_into_months()
-                advance_date = lambda date: advance_month(date)
+                advance_date = lambda date: ut.advance_month(date)
             case "y" | "year":
                 split_admit = lambda admit: admit.split_into_years()
-                advance_date = lambda date: advance_year(date)
+                advance_date = lambda date: ut.advance_year(date)
             case _:
                 raise ValueError("Unknown interval type.")
 
