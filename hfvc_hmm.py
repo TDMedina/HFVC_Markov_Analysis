@@ -1,3 +1,8 @@
+"""HFVC - Hidden Markov Model
+
+@author: T.D. Medina
+"""
+
 from collections import namedtuple
 import random
 
