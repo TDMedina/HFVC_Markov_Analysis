@@ -8,11 +8,11 @@ Created on Mon Jan 10 16:25:26 2022
 """
 
 from datetime import datetime
-from hmmlearn import hmm
-import numpy as np
+
 import pandas as pd
+
 from admissions import Admission, AdmissionList
-from markov import make_markov_model
+import hfvc_hmm
 from patients import Patient, PatientDatabase
 from prescriptions import PrescriptionList
 from utilities import DatedValue
@@ -92,23 +92,6 @@ class HFVCDataManager:
                 del patient_data[patient_id][date]
         return
 
-    # @staticmethod
-    # def separate_MED_classes(patient_data):
-    #     for patient, fields in patient_data.items():
-    #         og_meds = fields["MED_classes_BL"]
-    #         if pd.isna(og_meds.value):
-    #             meds = [pd.NA]
-    #         else:
-    #             meds = og_meds.value.strip("[]").split(",")
-    #             meds = [med.strip('"') for med in meds]
-    #             meds = sorted([med for med in meds if med])
-    #         patient_data[patient]["medication_classes"] = DatedValue(
-    #             name="medication_classes",
-    #             value=meds,
-    #             date=og_meds.date
-    #         )
-    #         del patient_data[patient]["MED_classes_BL"]
-
     @staticmethod
     def separate_MED_scripts(patient_data):
         for patient_id, patient in patient_data.items():
@@ -186,31 +169,6 @@ class HFVCDataManager:
         return data
 
 
-def make_random_left_right_matrix(n_states):
-    array = []
-    i = n_states
-    while i:
-        array.append([0]*(n_states-i) + [1/(i)]*i)
-        i-=1
-    array = np.array(array)
-    return array
-
-
-def make_markov_model(chains, n_components, initial_tpm,
-                      extend_death_state=0):
-    chains = [chain for chain in chains if chain]
-    if extend_death_state > 0:
-        for i, chain in enumerate(chains):
-            if chain[-1] == 2:
-                chains[i] += [2]*extend_death_state
-    chain_lens = [len(chain) for chain in chains]
-    chain_array = [[val] for chain in chains for val in chain]
-    model = hmm.MultinomialHMM(n_components, init_params="se")
-    model.transmat_ = initial_tpm
-    model.fit(chain_array, chain_lens)
-    return model
-
-
 def main():
     data = HFVCDataManager.import_data("data.csv")
     return data
@@ -218,5 +176,7 @@ def main():
 
 if __name__ == "__main__":
     dataset = main()
-    chains = dataset.make_admission_chains("y", True)
-    model = make_markov_model(chains, 5, make_random_left_right_matrix(5), 1000)
+    # chains = dataset.make_admission_chains("y", True, include_empties=False)
+    # init_params = hfvc_hmm.make_random_init_params(5, 3)
+    # test_model = hfvc_hmm.TestModel(*hfvc_hmm.multichain_baum_welch(chains, **init_params))
+    # hmmlearn_model = hfvc_hmm.make_hmmlearn_model(chains, 5, **init_params)
