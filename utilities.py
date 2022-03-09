@@ -25,11 +25,30 @@ class NamedDate(DatedValue):
         super().__init__(name=name, value=pd.NA, date=date)
 
 
+def rollback_week_to_monday(date):
+    iso = date.isocalendar()
+    date = datetime.fromisocalendar(iso.year, iso.week, 1).date()
+    return date
+
+
+def rollback_month_to_first(date):
+    date = datetime(date.year, date.month, 1).date()
+    return date
+
+
+def rollback_year_to_first(date):
+    date = datetime(date.year, 1, 1).date()
+    return date
+
+
 def advance_month(date):
     if date.month == 12:
-        return datetime(date.year + 1, 1, 1).date()
-    return datetime(date.year, date.month + 1, 1).date()
+        date = datetime(date.year + 1, 1, 1).date()
+    else:
+        date = datetime(date.year, date.month + 1, 1).date()
+    return date
 
 
 def advance_year(date):
-    return datetime(date.year + 1, 1, 1).date()
+    date = datetime(date.year + 1, 1, 1).date()
+    return date
