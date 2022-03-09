@@ -1,7 +1,6 @@
 """HFVC - Admission Objects."""
 
 from datetime import datetime, timedelta
-import pandas as pd
 
 
 ADMISSION_TYPES = {
@@ -64,6 +63,12 @@ class Admission:
         days = self.split_into_days()
         years = sorted({datetime(day.year, 1, 1).date() for day in days})
         return years
+
+    def in_date_range(self, start_date, end_date):
+        if (start_date <= (self.date + timedelta(self.length_of_stay))
+                and self.date < end_date):
+            return True
+        return False
 
 
 class AdmissionList:
@@ -167,8 +172,7 @@ class AdmissionList:
             case _:
                 raise ValueError("Unknown admission type.")
         if date_range is not None:
-            admit_list = [x for x in admit_list
-                          if date_range[0] <= x.date < date_range[1]]
+            admit_list = [x for x in admit_list if x.in_date_range(*date_range)]
         if as_AdmissionList:
             admit_list = AdmissionList(admit_list)
         return admit_list
