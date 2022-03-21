@@ -12,6 +12,7 @@ import utilities as ut
 
 pio.renderers.default = "browser"
 
+
 class PatientDatabase:
     def __init__(self, patients=None):
         self.patients = patients
@@ -62,15 +63,13 @@ class PatientDatabase:
     def size(self):
         return self.__len__()
 
-    def make_admission_chains(self, interval="year", values_only=False,
-                              admit_types="EM", date_range=None, include_empties=True,
-                              as_arrays=False):
-        chains = {patient.id: chain for patient in self
-                  if (chain := patient.make_admission_chain(interval, values_only,
-                                                            admit_types, date_range))
-                      or include_empties}
-        # if not include_empties:
-        #     chains = {name: chain for name, chain in chains.items() if chain}
+    def make_admission_chains(self, interval="year", values_only=False, min_length=0,
+                              admit_types="EM", date_range=None):
+        chains = {patient.id: patient.make_admission_chain(interval, values_only,
+                                                           admit_types, date_range)
+                  for patient in self}
+        chains = {patient_id: chain for patient_id, chain in chains.items()
+                  if len(chain) >= min_length}
         if values_only:
             chains = list(chains.values())
         return chains
@@ -195,8 +194,7 @@ class Patient:
                 return 3
             return 4
 
-    def make_stage_chain(self, interval="year", admit_types="EM", values_only=False,
-                         ):
+    def make_stage_chain(self, interval="year", admit_types="EM", values_only=False):
         match interval.lower():
             case "d" | "day":
                 rollback = lambda date: date - timedelta(1)
