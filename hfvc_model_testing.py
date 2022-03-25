@@ -1,6 +1,7 @@
 """HFVC - Model Testing and Comparisons"""
 
 from collections import namedtuple
+from random import choice
 
 import numpy as np
 
@@ -11,14 +12,17 @@ import hfvc_hmm
 EmitPrediction = namedtuple("EmitPrediction",
                             ["probabilities", "score", "probability_ratios"])
 
-
-def split_test_and_train(chains, proportion=10):
+def split_test_and_train(chains, random_test_state=False, proportion=10):
     n_chains = len(chains)
     divider = n_chains // proportion
     shuffle = np.random.permutation(range(n_chains))
     train = [chains[i] for i in shuffle[divider:]]
     test = [chains[i] for i in shuffle[:divider]]
-    test = [(chain[:-1], chain[-1]) for chain in test]
+    if random_test_state:
+        test = [(chain[:(i:=choice(range(1, len(chain))))], chain[i])
+                for chain in test]
+    else:
+        test = [(chain[:-1], chain[-1]) for chain in test]
     return train, test
 
 
