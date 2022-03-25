@@ -74,24 +74,20 @@ def make_uniform_stochastic_matrix(rows, columns):
 
 
 def calculate_alphas(observed_chain, tpm, epm, init_dist):
-    states = range(tpm.shape[0])
-    alphas = [init_dist * epm[:, observed_chain[0]]]
-    for obs in observed_chain[1:]:
-        t0 = alphas[-1]
-        alphas.append(np.array([epm[i, obs] * (t0 @ tpm[:, i]) for i in states]))
-    alphas = np.array(alphas).transpose()
+    alphas = np.zeros([len(observed_chain), tpm.shape[0]])
+    alphas[0] = init_dist * epm[:, observed_chain[0]]
+    for i, obs in enumerate(observed_chain[1:], start=1):
+        alphas[i] = epm[:, obs] * (alphas[i-1] @ tpm)
+    alphas = alphas.transpose()
     return alphas
 
 
 def calculate_betas(observed_chain, tpm, epm):
-    states = tpm.shape[0]
-    betas = [np.array([1]*states)]
-    for obs in reversed(observed_chain[1:]):
-        t1 = betas[-1]
-        t0 = np.array([sum(t1*tpm[i, :]*epm[:, obs]) for i in range(states)])
-        betas.append(t0)
-    betas.reverse()
-    betas = np.array(betas).transpose()
+    size = len(observed_chain)
+    betas = np.ones([size, tpm.shape[0]])
+    for i, obs in enumerate(reversed(observed_chain[1:]), start=2):
+        betas[size-i] = (tpm * epm[:,obs] * betas[size-(i-1)]).sum(axis=1)
+    betas = betas.transpose()
     return betas
 
 
