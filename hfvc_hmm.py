@@ -10,7 +10,7 @@ from hmmlearn import hmm
 import numpy as np
 
 
-TestModel = namedtuple("TestModel", ["init_dist", "tpm", "epm"])
+HMM_Model = namedtuple("HMM_Model", ["init_dist", "tpm", "epm"])
 
 
 def make_hmmlearn_model(chains, n_components, tpm, epm, init_dist,
@@ -39,7 +39,7 @@ def make_random_init_params(n_hidden_states, n_obs_states):
     init_dist = np.random.random([1, n_hidden_states])[0]
     init_dist = init_dist / init_dist.sum()
 
-    params = {"tpm": tpm, "epm": epm, "init_dist": init_dist}
+    params = {"init_dist": init_dist, "tpm": tpm, "epm": epm}
     return params
 
 
@@ -199,7 +199,7 @@ def multichain_baum_welch(observed_chains, tpm, epm, init_dist,
 
     # Iterate.
     for i in range(1, max_iterations+1):
-        print(f"Iteration: {i}")
+        print(f"\rIteration: {i}", end="")
         all_gammas, all_xis = zip(*[calculate_gammas_and_xis(chain, tpm, epm, init_dist)
                                     for chain in observed_chains])
         all_gammas = make_gamma_matrix(all_gammas, max_len)
@@ -213,7 +213,7 @@ def multichain_baum_welch(observed_chains, tpm, epm, init_dist,
         if all([np.allclose(init_dist, new_init_dist, atol=atol),
                 np.allclose(tpm, new_tpm, atol=atol),
                 np.allclose(epm, new_epm, atol=atol)]):
-            print(f"Converged in {i} steps.")
+            print(f"\n\nConverged in {i} steps.")
             break
 
         # Assign new parameters.
@@ -223,38 +223,8 @@ def multichain_baum_welch(observed_chains, tpm, epm, init_dist,
 
     # Notify if no convergence.
     else:
-        print(f"Max iterations ({max_iterations}) reached without convergence.")
-    return TestModel(init_dist, tpm, epm)
-
-
-def split_test_and_train(chains, proportion=10):
-    n_chains = len(chains)
-    divider = n_chains // proportion
-    shuffle = np.random.permutation(range(len(chains)))
-    train = [chains[i] for i in shuffle[divider:]]
-    test = [chains[i] for i in shuffle[:divider]]
-    test = [(chain[:-1], chain[-1]) for chain in test]
-    return train, test
-
-
-def predict_next_emission(chain, tpm, epm, init_dist):
-    alpha = calculate_alphas(chain, tpm, epm, init_dist)[:, -1]
-    alpha = alpha / alpha.sum()
-    margins = tpm @ epm
-    probs = alpha.reshape(-1, 1) * margins
-    probs = probs.sum(0)
-    return probs
-
-
-def test_hmm_model(test_chains, model):
-    results = []
-    for chain, answer in test_chains:
-        if not chain:
-            continue
-        probs = predict_next_emission(chain, model.tpm, model.epm, model.init_dist)
-        prediction = np.argmax(probs)
-        results.append((prediction == answer, prediction, probs))
-    return results
+        print(f"\n\nMax iterations ({max_iterations}) reached without convergence.")
+    return HMM_Model(init_dist, tpm, epm)
 
 
 def main_test():
