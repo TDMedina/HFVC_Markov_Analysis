@@ -73,6 +73,20 @@ def make_uniform_stochastic_matrix(rows, columns):
     return array
 
 
+def make_exclusive_deathstate_epm(n_components, e_states):
+    x = e_states-1
+    y= n_components-1
+    epm = np.array([[1/x]*x + [0]]
+                   * y
+                   + [[0]*x + [1]])
+    return epm
+
+
+def make_exclusive_deathstate_init_dist(n_components):
+    init_dist = np.array([1/(n_components-1)]*(n_components-1) + [0])
+    return init_dist
+
+
 def calculate_alphas(observed_chain, tpm, epm, init_dist):
     alphas = np.zeros([len(observed_chain), tpm.shape[0]])
     alphas[0] = init_dist * epm[:, observed_chain[0]]
@@ -146,6 +160,30 @@ def baum_welch(observed_chain, tpm, epm, init_dist, max_iterations=1000, atol=1e
     else:
         print(f"Max iterations ({max_iterations}) reached without convergence.")
     return init_dist, tpm, epm
+
+
+def viterbi(observed_chain, tpm, epm, init_dist):
+    deltas = np.zeros([len(observed_chain), tpm.shape[0]])
+    path = deltas.copy()
+    deltas[0] = init_dist * epm[:, observed_chain[0]]
+    path[0] = [-1]*tpm.shape[0]
+    for i, obs in enumerate(observed_chain[1:], start=1):
+        delta = deltas[i-1] * tpm.T
+        deltas[i] = delta.max(axis=1) * epm[:, obs]
+        path[i] = delta.argmax(axis=1)
+    deltas = deltas.transpose()
+    path = path.transpose()
+    return deltas, path
+
+
+def decode(observed_chain, tpm, epm, init_dist):
+    probs, path = viterbi(observed_chain, tpm, epm, init_dist)
+    path = path.transpose()
+    best_path = [int(probs[:, -1].argmax())]
+    for i in range(path.shape[0]-1, 0, -1):
+        best_path.append(int(path[i, best_path[-1]]))
+    best_path.reverse()
+    return best_path
 
 
 # %% Multichain
