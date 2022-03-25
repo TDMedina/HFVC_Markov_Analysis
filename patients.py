@@ -167,8 +167,8 @@ class Patient:
             ["Follow-Up Date", ut.NamedDate("Follow-Up Date", self.follow_up_date)],
             ["Death", ut.NamedDate("Death", self.date_of_death)]
             ]
-        admissions = self.admissions.filter_admissions(filter_admission_type, None, True)
-        events += admissions.get_all("lol")
+        admissions = self.admissions.filter_admissions(filter_admission_type, as_AdmissionList=True)
+        events += admissions.get_admit_type_tuples()
         events = [x for x in events if not pd.isna(x[1].date)]
         events.sort(key=lambda x: x[1].date)
         return events
@@ -181,16 +181,17 @@ class Patient:
             print(f"{entry[0]}: {entry[1]}")
 
     def determine_stage(self, reference_date=datetime.today().date()):
-        date_range = [reference_date - timedelta(365), reference_date]
+        start_date = reference_date - timedelta(365)
+        stop_date = reference_date
         stage_b = self.other_flags["StageB_FLAG_BL"]
         if self.deceased and self.date_of_death <= reference_date:
             return 5
         if pd.isna(stage_b.value) or not stage_b.value or reference_date < stage_b.date:
-            if not self.admissions.filter_admissions("EM", date_range):
+            if not self.admissions.filter_admissions("EM", start_date, stop_date):
                 return 1
             return 2
         if stage_b.value and stage_b.date <= reference_date:
-            if not self.admissions.filter_admissions("EM", date_range):
+            if not self.admissions.filter_admissions("EM", start_date, stop_date):
                 return 3
             return 4
 
