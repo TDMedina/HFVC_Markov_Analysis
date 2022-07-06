@@ -53,8 +53,8 @@ class Admission:
         days = self.split_into_days()
         weeks = sorted(
             {datetime.fromisocalendar(day.isocalendar().year, day.isocalendar().week, 1).date()
-            for day in days}
-            )
+             for day in days}
+             )
         return weeks
 
     def split_into_months(self):
@@ -76,7 +76,7 @@ class Admission:
             return start_date <= last
         if start_date is None:
             return first < end_date
-        return (start_date <= last and first < end_date)
+        return start_date <= last and first < end_date
 
 
 class AdmissionList:
@@ -174,3 +174,11 @@ class AdmissionList:
         if as_AdmissionList:
             admit_list = AdmissionList(admit_list)
         return admit_list
+
+    def admission_date_range(self, admit_type=""):
+        admits = self.filter_admissions(admit_type)
+        if not admits:
+            return None
+        min_date = min([admit.date for admit in admits])
+        max_date = max([admit.date + timedelta(admit.length_of_stay-1) for admit in admits])
+        return min_date, max_date
