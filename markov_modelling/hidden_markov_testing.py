@@ -16,6 +16,9 @@ EmitPrediction = namedtuple("EmitPrediction",
                             ["probabilities", "score", "probability_ratios"])
 PredictionTest = namedtuple("PredictionTest",
                             ["correct", "truth", "predicted", "prediction"])
+TestResults = namedtuple("TestResults",
+                         ["model", "score", "results", "train", "test"])
+
 
 def split_test_and_train(chains, random_test_state=False, proportion=10):
     n_chains = len(chains)
