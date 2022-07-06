@@ -1,4 +1,7 @@
-"""HFVC - Admission Objects."""
+"""Heart Failure Virtual Clinic - Hospital Admission Objects.
+
+@author: T.D. Medina
+"""
 
 from datetime import datetime, timedelta
 

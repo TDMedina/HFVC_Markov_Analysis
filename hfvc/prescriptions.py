@@ -1,4 +1,7 @@
-"""HFVN - Prescription Objects."""
+"""Heart Failure Virtual Clinic - Medication Prescription Objects.
+
+@author: T.D. Medina
+"""
 
 from datetime import datetime
 import json

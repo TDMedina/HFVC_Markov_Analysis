@@ -1,4 +1,7 @@
-"""HFVC - Model Testing and Comparisons"""
+"""Hidden Markov Model Testing and Comparisons.
+
+@author: T.D. Medina
+"""
 
 from collections import namedtuple
 from random import choice

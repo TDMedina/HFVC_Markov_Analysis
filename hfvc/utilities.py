@@ -1,4 +1,7 @@
-"""HFVC - Utility Objects."""
+"""Heart Failure Virtual Clinic - Helper Objects and Functions.
+
+@author: T.D. Medina
+"""
 
 import pandas as pd
 from datetime import datetime

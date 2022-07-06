@@ -1,4 +1,4 @@
-"""HFVC - Hidden Markov Model
+"""Hidden Markov Model Training.
 
 @author: T.D. Medina
 """

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Heart Failure Virtual Consultation - Financial Analysis.
+"""Heart Failure Virtual Clinic - Patient Data Processing.
 
 Created on Mon Jan 10 16:25:26 2022
 

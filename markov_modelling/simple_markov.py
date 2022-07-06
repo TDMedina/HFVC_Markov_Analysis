@@ -1,4 +1,7 @@
-"""HFVC - Simple Markov Model"""
+"""Simple Markov Model Training.
+
+@author: T.D. Medina
+"""
 
 import numpy as np
 

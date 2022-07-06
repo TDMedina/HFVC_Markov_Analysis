@@ -1,4 +1,7 @@
-"""HFVC - Patient Objects."""
+"""Heart Failure Virtual Clinic - Patient Objects.
+
+@author: T.D. Medina
+ """
 
 from datetime import datetime, timedelta
 from warnings import warn
