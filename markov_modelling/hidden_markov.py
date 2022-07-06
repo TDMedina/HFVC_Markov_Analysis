@@ -100,7 +100,7 @@ def calculate_betas(observed_chain, tpm, epm):
     size = len(observed_chain)
     betas = np.ones([size, tpm.shape[0]])
     for i, obs in enumerate(reversed(observed_chain[1:]), start=2):
-        betas[size-i] = (tpm * epm[:,obs] * betas[size-(i-1)]).sum(axis=1)
+        betas[size-i] = (tpm * epm[:, obs] * betas[size-(i-1)]).sum(axis=1)
     betas = betas.transpose()
     return betas
 

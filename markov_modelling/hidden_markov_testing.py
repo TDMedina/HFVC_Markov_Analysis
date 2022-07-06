@@ -8,8 +8,8 @@ from random import choice
 
 import numpy as np
 
-import hfvc
-import hfvc_hmm
+from hfvc import processing
+import markov_modelling.hidden_markov as hmm
 
 
 EmitPrediction = namedtuple("EmitPrediction",
@@ -24,7 +24,7 @@ def split_test_and_train(chains, random_test_state=False, proportion=10):
     train = [chains[i] for i in shuffle[divider:]]
     test = [chains[i] for i in shuffle[:divider]]
     if random_test_state:
-        test = [(chain[:(i:=choice(range(1, len(chain))))], chain[i])
+        test = [(chain[:(i := choice(range(1, len(chain))))], chain[i])
                 for chain in test]
     else:
         test = [(chain[:-1], chain[-1]) for chain in test]
@@ -32,7 +32,7 @@ def split_test_and_train(chains, random_test_state=False, proportion=10):
 
 
 def predict_next_emission(chain, init_dist, tpm, epm):
-    alpha = hfvc_hmm.calculate_alphas(chain, tpm, epm, init_dist)[:, -1]
+    alpha = hmm.calculate_alphas(chain, tpm, epm, init_dist)[:, -1]
     alpha = alpha / alpha.sum()
     margins = tpm @ epm
     probs = alpha.reshape(-1, 1) * margins
@@ -56,24 +56,24 @@ def test_hmm_model(test_chains, model):
     return score, results
 
 
-def build_and_test_model(data: hfvc.PatientDatabase, n_components, interval):
+def build_and_test_model(data, n_components, interval):
     train, test = split_test_and_train(data.make_admission_chains(interval, values_only=True, min_length=2))
 
     # init_params = hfvc_hmm.make_random_init_params(n_components, 3)
     # model = hfvc_hmm.multichain_baum_welch(train, **init_params)
 
-    tpm = hfvc_hmm.make_random_left_right_matrix(n_components)
+    tpm = hmm.make_random_left_right_matrix(n_components)
 
     # epm = hfvc_hmm.make_exclusive_deathstate_epm(n_components, 3)
-    epm = hfvc_hmm.make_uniform_stochastic_matrix(5,3)
+    epm = hmm.make_uniform_stochastic_matrix(n_components, 3)
     # epm = np.array([[0.49, 0.49, 0.02]] * (n_components-1) + [[0.01, 0.01, 0.98]])
 
-    init_dist = hfvc_hmm.make_exclusive_deathstate_init_dist(n_components)
-    model = hfvc_hmm.multichain_baum_welch(train, tpm, epm, init_dist)
+    init_dist = hmm.make_exclusive_deathstate_init_dist(n_components)
+    model = hmm.multichain_baum_welch(train, tpm, epm, init_dist)
     score, results = test_hmm_model(test, model)
     return model, score, results, train, test
 
 
 if __name__ == "__main__":
-    data = hfvc.main()
-    model, score, results, train, test = build_and_test_model(data, 5, "m")
+    patient_db = processing.main()
+    test_results = TestResults(*build_and_test_model(patient_db, 5, "m"))

@@ -8,14 +8,15 @@ Created on Mon Jan 10 16:25:26 2022
 """
 
 from datetime import datetime
+import importlib.resources as pkg_resources
 
 import pandas as pd
 
-from admissions import Admission, AdmissionList
-import hfvc_hmm
-from patients import Patient, PatientDatabase
-from prescriptions import PrescriptionList
-from utilities import DatedValue
+from hfvc.admissions import Admission, AdmissionList
+from hfvc.patients import Patient, PatientDatabase
+from hfvc.prescriptions import PrescriptionList
+from hfvc.utilities import DatedValue
+from hfvc import resources
 
 
 class HFVCDataManager:
@@ -58,7 +59,7 @@ class HFVCDataManager:
             "death_date": "date_of_death",
             "DaysFU": "follow_up_duration",
             "FollowUpDate": "follow_up_date",
-        }
+            }
         table.rename(columns=mapping, inplace=True)
 
     @staticmethod
@@ -72,7 +73,7 @@ class HFVCDataManager:
         if fields is None:
             fields = list(
                 next((patient for patient in patient_data.values())).keys()
-            )
+                )
         for field in sorted(fields):
             if "LOS_n" in field:
                 date = field.replace("LOS", "Date")
@@ -88,7 +89,7 @@ class HFVCDataManager:
                     field,
                     patient_data[patient_id][field],
                     patient_data[patient_id][date]
-                )
+                    )
                 del patient_data[patient_id][date]
         return
 
@@ -98,7 +99,7 @@ class HFVCDataManager:
             if pd.isna(patient["MED_script_BL"].value):
                 prescriptions = pd.NA
             else:
-                prescriptions = PrescriptionList._import_from_json_string(
+                prescriptions = PrescriptionList.import_from_json_string(
                     patient_id,
                     patient["MED_script_BL"].value
                     )
@@ -164,13 +165,19 @@ class HFVCDataManager:
         cls.group_DGN_flags(data)
         cls.group_flags(data)
         cls.group_bl_metrics(data)
-        data = PatientDatabase({patient_id: Patient._patient_from_dict(patient)
+        data = PatientDatabase({patient_id: Patient.patient_from_dict(patient)
                                for patient_id, patient in data.items()})
         return data
 
 
+def read_default_data():
+    data = pkg_resources.path(resources, "data.csv")
+    return data
+
+
 def main():
-    data = HFVCDataManager.import_data("data.csv")
+    data = read_default_data()
+    data = HFVCDataManager.import_data(data)
     return data
 
 

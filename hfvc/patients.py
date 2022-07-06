@@ -10,8 +10,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 
-from admissions import AdmissionList, Admission
-import utilities as ut
+from hfvc.admissions import AdmissionList, Admission
+import hfvc.utilities as ut
 
 pio.renderers.default = "browser"
 
@@ -69,10 +69,12 @@ class PatientDatabase:
     def make_admission_chains(self, interval="year", start=None, stop=None,
                               admit_types="EM", shift_death=True, add_min_clinic_date=True,
                               add_follow_up_date=True, values_only=False, min_length=0):
-        chains = {patient.id:
-            patient.make_admission_chain(interval, start, stop, admit_types, shift_death,
-                                         add_min_clinic_date, add_follow_up_date, values_only)
-            for patient in self}
+        chains = {
+            patient.id: patient.make_admission_chain(interval, start, stop, admit_types,
+                                                     shift_death, add_min_clinic_date,
+                                                     add_follow_up_date, values_only)
+            for patient in self
+            }
         chains = {patient_id: chain for patient_id, chain in chains.items()
                   if len(chain) >= min_length}
         if values_only:

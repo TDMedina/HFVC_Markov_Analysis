@@ -5,6 +5,7 @@
 
 import numpy as np
 
+
 def train_tpm(chains, n_states):
     tpm = np.zeros([n_states, n_states])
     init_dist = np.zeros(n_states)
