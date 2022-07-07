@@ -1,4 +1,7 @@
-"""HFVN - Prescription Objects."""
+"""Heart Failure Virtual Clinic - Medication Prescription Objects.
+
+@author: T.D. Medina
+"""
 
 from datetime import datetime
 import json
@@ -49,7 +52,7 @@ class PrescriptionList:
         return len(self.prescriptions)
 
     @staticmethod
-    def _import_from_json_string(patient_id, json_string):
+    def import_from_json_string(patient_id, json_string):
         json_dict = json.loads(json_string)
         prescription_list = PrescriptionList(
             patient_id=patient_id,

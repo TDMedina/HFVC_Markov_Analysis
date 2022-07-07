@@ -1,4 +1,7 @@
-"""HFVC - Admission Objects."""
+"""Heart Failure Virtual Clinic - Hospital Admission Objects.
+
+@author: T.D. Medina
+"""
 
 from datetime import datetime, timedelta
 
@@ -50,8 +53,8 @@ class Admission:
         days = self.split_into_days()
         weeks = sorted(
             {datetime.fromisocalendar(day.isocalendar().year, day.isocalendar().week, 1).date()
-            for day in days}
-            )
+             for day in days}
+             )
         return weeks
 
     def split_into_months(self):
@@ -65,25 +68,39 @@ class Admission:
         return years
 
     def in_date_range(self, start_date, end_date):
-        if (start_date <= (self.date + timedelta(self.length_of_stay))
-                and self.date < end_date):
+        if start_date is None and end_date is None:
             return True
-        return False
+        first = self.date
+        last = self.date + timedelta(self.length_of_stay)
+        if end_date is None:
+            return start_date <= last
+        if start_date is None:
+            return first < end_date
+        return start_date <= last and first < end_date
 
 
 class AdmissionList:
     def __init__(self, admissions=None):
+        if admissions is None:
+            self.admissions = []
+        else:
+            self.admissions = sorted(admissions, key=lambda admit: admit.date)
+
         self.ELCV = []
         self.ELXX = []
         self.EMCV = []
         self.EMHF = []
         self.EMXX = []
-
         if admissions is not None:
             self.assign_admissions(admissions)
 
     def __len__(self):
-        size = self.get_counts(False)
+        size = len(self.admissions)
+        return size
+
+    @property
+    def _size(self):
+        size = len(self.admissions)
         return size
 
     def __str__(self):
@@ -93,37 +110,21 @@ class AdmissionList:
         for admission in admissions:
             self.__getattribute__(admission.type).append(admission)
 
-    def get_all(self, container="dict"):
-        admits = {"ELCV": self.ELCV,
-                  "ELXX": self.ELXX,
-                  "EMCV": self.EMCV,
-                  "EMHF": self.EMHF,
-                  "EMXX": self.EMXX}
-        match container.lower():
-            case "list":
-                admits = [admit for admit_list in admits.values()
-                          for admit in admit_list]
-                admits.sort(key=lambda admit: admit.date)
-            case "lol":
-                admits = [[admit_type, admit] for admit_type in admits
-                          for admit in admits[admit_type]]
-            case "tuples" | "tuple" | "tup":
-                admits = [(admit_type, admit) for admit_type in admits
-                          for admit in admits[admit_type]]
-            case _:
-                pass
-        return admits
+    def get_admit_dict(self):
+        admit_dict = {"ELCV": self.ELCV,
+                      "ELXX": self.ELXX,
+                      "EMCV": self.EMCV,
+                      "EMHF": self.EMHF,
+                      "EMXX": self.EMXX}
+        return admit_dict
 
-    # def list_all(self):
-    #     admit_list = self.get_all()
-    #     admit_list = [(key, admit) for key in admit_list
-    #                   for admit in admit_list[key]]
-    #     admit_list.sort(key=lambda x: x[1].date)
-    #     return admit_list
+    def get_admit_type_tuples(self):
+        admits = [(admit.type, admit) for admit in self.admissions]
+        return admits
 
     def show_all(self):
         string = ""
-        for admit_type, admits in self.get_all().items():
+        for admit_type, admits in self.get_admit_dict().items():
             if not admits:
                 continue
             string += f"{admit_type}:\n"
@@ -131,12 +132,9 @@ class AdmissionList:
             string += "\n"
         print(string)
 
-    def get_counts(self, per_type=True):
-        if per_type:
-            counts = {admit_type: len(admits)
-                      for admit_type, admits in self.get_all().items()}
-        else:
-            counts = len(self.get_all("list"))
+    def get_counts(self):
+        counts = {admit_type: len(admits)
+                  for admit_type, admits in self.get_admit_dict().items()}
         return counts
 
     def show_counts(self):
@@ -149,30 +147,38 @@ class AdmissionList:
         # return string
 
     def show_timeline(self):
-        for entry in sorted(self.get_all("tuples"), key=lambda x: x[1].date):
+        for entry in self.get_admit_type_tuples():
             print(f"{entry[0]}: {entry[1]}")
 
-    def filter_admissions(self, admit_type="", date_range=None, as_AdmissionList=False):
-        admit_list = self.get_all("list")
+    def filter_admissions(self, admit_type="", start_date=None, end_date=None,
+                          as_AdmissionList=False):
         match admit_type.upper():
             case "" | "ALL":
-                pass
+                admit_list = self.admissions
             case "EMHF" | "EMCV" | "EMXX" | "ELCV" | "ELXX":
                 admit_list = self.__getattribute__(admit_type.upper())
             case "EM" | "EMERGENCY":
-                admit_list = [x for x in admit_list if x.type.startswith("EM")]
+                admit_list = [x for x in self.admissions if x.type.startswith("EM")]
             case "EL" | "ELECTIVE":
-                admit_list = [x for x in admit_list if x.type.startswith("EL")]
+                admit_list = [x for x in self.admissions if x.type.startswith("EL")]
             case "HF" | "HEART FAILURE":
-                admit_list = [x for x in admit_list if x.type.endswith("HF")]
+                admit_list = [x for x in self.admissions if x.type.endswith("HF")]
             case "CV" | "CARDIOVASCULAR":
-                admit_list = [x for x in admit_list if x.type.endswith("CV")]
+                admit_list = [x for x in self.admissions if x.type.endswith("CV")]
             case "XX" | "OTHER" | "MISC":
-                admit_list = [x for x in admit_list if x.type.endswith("XX")]
+                admit_list = [x for x in self.admissions if x.type.endswith("XX")]
             case _:
                 raise ValueError("Unknown admission type.")
-        if date_range is not None:
-            admit_list = [x for x in admit_list if x.in_date_range(*date_range)]
+        if not (start_date is None and end_date is None):
+            admit_list = [x for x in admit_list if x.in_date_range(start_date, end_date)]
         if as_AdmissionList:
             admit_list = AdmissionList(admit_list)
         return admit_list
+
+    def admission_date_range(self, admit_type=""):
+        admits = self.filter_admissions(admit_type)
+        if not admits:
+            return None
+        min_date = min([admit.date for admit in admits])
+        max_date = max([admit.date + timedelta(admit.length_of_stay-1) for admit in admits])
+        return min_date, max_date

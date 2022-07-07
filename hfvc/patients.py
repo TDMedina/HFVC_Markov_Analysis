@@ -1,4 +1,7 @@
-"""HFVC - Patient Objects."""
+"""Heart Failure Virtual Clinic - Patient Objects.
+
+@author: T.D. Medina
+ """
 
 from datetime import datetime, timedelta
 from warnings import warn
@@ -7,10 +10,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 
-from admissions import AdmissionList, Admission
-import utilities as ut
+from hfvc.admissions import AdmissionList, Admission
+import hfvc.utilities as ut
 
 pio.renderers.default = "browser"
+
 
 class PatientDatabase:
     def __init__(self, patients=None):
@@ -62,23 +66,30 @@ class PatientDatabase:
     def size(self):
         return self.__len__()
 
-    def make_admission_chains(self, interval="year", values_only=False,
-                              admit_types="EM", date_range=None, include_empties=True,
-                              as_arrays=False):
-        chains = {patient.id: chain for patient in self
-                  if (chain := patient.make_admission_chain(interval, values_only,
-                                                            admit_types, date_range))
-                      or include_empties}
-        # if not include_empties:
-        #     chains = {name: chain for name, chain in chains.items() if chain}
+    def make_admission_chains(self, interval="year", start=None, stop=None,
+                              admit_types="EM", shift_death=True, add_min_clinic_date=True,
+                              add_follow_up_date=True, values_only=False, min_length=0):
+        chains = {
+            patient.id: patient.make_admission_chain(interval, start, stop, admit_types,
+                                                     shift_death, add_min_clinic_date,
+                                                     add_follow_up_date, values_only)
+            for patient in self
+            }
+        chains = {patient_id: chain for patient_id, chain in chains.items()
+                  if len(chain) >= min_length}
         if values_only:
             chains = list(chains.values())
         return chains
 
-    # def make_stage_chains(self, interval="year",admit_types="EM", date_range=None):
-    #     chains = {patient.id: chain for patient in self
-    #               if (chain := patient.make_stage_chain(interval, admit_types))}
-    #     return chains
+    def make_stage_chains(self, interval="month", values_only=False,
+                          add_min_clinic_date=True, add_follow_up_date=True):
+        chains = {patient.id: chain for patient in self
+                  if (chain := patient.make_stage_chain(interval, values_only,
+                                                        add_min_clinic_date,
+                                                        add_follow_up_date))}
+        if values_only:
+            chains = list(chains.values())
+        return chains
 
     def plot_patient_chains2(self, interval="year", admit_types="EM", date_range=None,
                              normalize=False):
@@ -112,6 +123,19 @@ class PatientDatabase:
                 )
         fig.show()
         return
+
+    def subset_type(self, patient_type):
+        patients = {patient_id: patient for patient_id, patient in self.patients.items()
+                    if patient.type == patient_type}
+        patients = PatientDatabase(patients)
+        return patients
+
+    def separate_type(self, patient_type):
+        patients = self.subset_type(patient_type)
+        others = {patient_id: patient for patient_id, patient in self.patients.items()
+                  if patient.type != patient_type}
+        others = PatientDatabase(others)
+        return patients, others
 
 
 class Patient:
@@ -158,7 +182,7 @@ class Patient:
         return age
 
     @staticmethod
-    def _patient_from_dict(p_dict):
+    def patient_from_dict(p_dict):
         return Patient(**p_dict)
 
     def make_timeline(self, filter_admission_type=""):
@@ -168,8 +192,8 @@ class Patient:
             ["Follow-Up Date", ut.NamedDate("Follow-Up Date", self.follow_up_date)],
             ["Death", ut.NamedDate("Death", self.date_of_death)]
             ]
-        admissions = self.admissions.filter_admissions(filter_admission_type, None, True)
-        events += admissions.get_all("lol")
+        admissions = self.admissions.filter_admissions(filter_admission_type, as_AdmissionList=True)
+        events += admissions.get_admit_type_tuples()
         events = [x for x in events if not pd.isna(x[1].date)]
         events.sort(key=lambda x: x[1].date)
         return events
@@ -182,21 +206,23 @@ class Patient:
             print(f"{entry[0]}: {entry[1]}")
 
     def determine_stage(self, reference_date=datetime.today().date()):
-        date_range = [reference_date - timedelta(365), reference_date]
+        start_date = reference_date - timedelta(365)
+        stop_date = reference_date
         stage_b = self.other_flags["StageB_FLAG_BL"]
-        if self.deceased and self.date_of_death <= reference_date:
+        if (self.deceased and not pd.isna(self.date_of_death)
+                and self.date_of_death < reference_date):
             return 5
-        if pd.isna(stage_b.value) or not stage_b.value or reference_date < stage_b.date:
-            if not self.admissions.filter_admissions("EM", date_range):
+        if pd.isna(stage_b.value) or not stage_b.value or reference_date <= stage_b.date:
+            if not self.admissions.filter_admissions("EM", start_date, stop_date):
                 return 1
             return 2
-        if stage_b.value and stage_b.date <= reference_date:
-            if not self.admissions.filter_admissions("EM", date_range):
+        if stage_b.value and stage_b.date < reference_date:
+            if not self.admissions.filter_admissions("EM", start_date, stop_date):
                 return 3
             return 4
 
-    def make_stage_chain(self, interval="year", admit_types="EM", values_only=False,
-                         ):
+    def make_stage_chain(self, interval="month", values_only=False,
+                         add_min_clinic_date=True, add_follow_up_date=True):
         match interval.lower():
             case "d" | "day":
                 rollback = lambda date: date - timedelta(1)
@@ -212,29 +238,49 @@ class Patient:
                 advance_date = lambda date: ut.advance_year(date)
             case _:
                 raise ValueError("Unknown interval type.")
-        admissions = self.admissions.filter_admissions(admit_types)
-        admissions.sort(key=lambda admit: admit.date)
+
+        # Get earliest and latest data points from all admissions regardless of type.
+        dates = self.admissions.admission_date_range()
+        if dates is None:
+            dates = set()
+        else:
+            dates = set(dates)
 
         if self.deceased is True and not pd.isna(self.date_of_death):
-            death = Admission(self.id, "Death", -1, self.date_of_death, 1)
-            admissions.append(death)
+            dates.add(self.date_of_death)
 
-        if not admissions:
+        if add_follow_up_date and not pd.isna(self.follow_up_date):
+            dates.add(self.follow_up_date)
+
+        if add_min_clinic_date and not pd.isna(self.min_clinic_date):
+            dates.add(self.min_clinic_date)
+
+        first_date, last_date = min(dates), max(dates)
+
+        if not dates:
             if values_only:
                 return []
             return {}
 
-        position = rollback(admissions[0].date)
-        last = advance_date(admissions[-1].date + timedelta(admissions[-1].length_of_stay))
         stage_chain = {}
-        min_stage = 1
-        while position <= last:
-            stage = max(min_stage, self.determine_stage(position))
-            min_stage = stage
-            stage_chain[position] = stage
-            position = advance_date(position)
+        stage = 1
+        # Align start date to time intervals and move back to before first data point.
+        date_iteration = rollback(first_date)
+        # Align end date to time intervals and move forward to ahead of last data point.
+        last_date = advance_date(last_date)
+
+        while date_iteration <= last_date:
+            stage = max(stage, self.determine_stage(date_iteration))
+            stage_chain[date_iteration] = stage
+            date_iteration = advance_date(date_iteration)
+        # If patient is deceased but no date is known, just assign death state to
+        # the next time step after interval containing the last data point.
+        if self.deceased and pd.isna(self.date_of_death):
+            stage_chain[date_iteration] = 5
+
         if values_only:
-            stage_chain = list(stage_chain.values())
+            stage_chain = sorted(stage_chain.items(), key=lambda x: x[0])
+            stage_chain = [x[1] for x in stage_chain]
         return stage_chain
 
     def make_staged_timeline(self, filter_admission_type=""):
@@ -252,8 +298,10 @@ class Patient:
         for entry in timeline:
             print(f"{entry[0]}: {entry[1]} - Stage {entry[2]}")
 
-    def make_admission_chain(self, interval="year", values_only=False,
-                             admit_types="EM", date_range=None):
+    def make_admission_chain(self, interval="year", start=None, stop=None,
+                             admit_types="EM", shift_death=True, add_min_clinic_date=True,
+                             add_follow_up_date=True, values_only=False):
+        # Make appropriate time interval functions.
         match interval.lower():
             case "d" | "day":
                 split_admit = lambda admit: admit.split_into_days()
@@ -270,28 +318,46 @@ class Patient:
             case _:
                 raise ValueError("Unknown interval type.")
 
-        admissions = self.admissions.filter_admissions(admit_types, date_range)
+        # Add admission dates to chain.
+        admissions = self.admissions.filter_admissions(admit_types, start, stop)
         admissions = {date: 1 for admit in admissions for date in split_admit(admit)}
 
+        # Add death to chain.
         if self.deceased is True and not pd.isna(self.date_of_death):
-            death_date = Admission(self.id, "Death", -1, self.date_of_death, 1)
+            death_date = Admission(self.id, "Death", 0, self.date_of_death, 1)
             death_date = split_admit(death_date)[0]
             # Advance death date to next time period if masking admissions.
-            if death_date in admissions:
+            if shift_death and death_date in admissions:
                 death_date = advance_date(death_date)
             admissions[death_date] = 2
 
-        admit_dates = list(admissions.keys())
+        # Add follow-up date to chain.
+        if (add_follow_up_date and not pd.isna(self.follow_up_date)
+                and self.follow_up_date not in admissions):
+            follow_up = Admission(self.id, "Follow-Up", 0, self.follow_up_date, 1)
+            follow_up = split_admit(follow_up)[0]
+            admissions[follow_up] = 0
+
+        # Add min clinic date to chain.
+        if (add_min_clinic_date and not pd.isna(self.min_clinic_date)
+                and self.min_clinic_date not in admissions):
+            min_clin = Admission(self.id, "Min-Clin", 0, self.min_clinic_date, 1)
+            min_clin = split_admit(min_clin)[0]
+            admissions[min_clin] = 0
+
+        # Fill non-admission dates.
+        admit_dates = sorted(admissions.keys())
         for i, date in enumerate(admit_dates, start=0):
             if i == len(admit_dates)-1:
                 break
             diff = admit_dates[i+1] - admit_dates[i]
-            non_admissions = Admission(self.id, "Non-admission", -1,
+            non_admissions = Admission(self.id, "Non-admission", 0,
                                        date+timedelta(days=1), diff.days-1)
             non_admissions = split_admit(non_admissions)
             non_admissions = set(non_admissions) - set(admit_dates)
             non_admissions = {non_admit: 0 for non_admit in non_admissions}
             admissions.update(non_admissions)
+
         if values_only:
             admissions = [x[1] for x in sorted(admissions.items())]
             return admissions
