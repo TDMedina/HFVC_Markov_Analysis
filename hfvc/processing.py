@@ -9,6 +9,7 @@ Created on Mon Jan 10 16:25:26 2022
 
 from datetime import datetime
 import importlib.resources as pkg_resources
+import sys
 
 import pandas as pd
 
@@ -175,14 +176,17 @@ def read_default_data():
     return data
 
 
-def main():
-    data = read_default_data()
+def main(data=None):
+    data = data or read_default_data()
     data = HFVCDataManager.import_data(data)
     return data
 
 
 if __name__ == "__main__":
-    dataset = main()
+    if len(sys.argv) == 2:
+        dataset = main(sys.argv[1])
+    else:
+        dataset = main()
     # chains = dataset.make_admission_chains("y", True, include_empties=False)
     # init_params = hfvc_hmm.make_random_init_params(5, 3)
     # test_model = hfvc_hmm.TestModel(*hfvc_hmm.multichain_baum_welch(chains, **init_params))
