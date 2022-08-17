@@ -2,13 +2,19 @@
 
 @author: T.D. Medina
 """
+
+import sys
+
 import dash_bootstrap_components as dbc
 import pandas as pd
 from dash import Dash, html, dash_table, Output, Input, dcc
 
 from hfvc import processing, modelling
 
-patient_db = processing.main()
+if len(sys.argv) == 2:
+    patient_db = processing.main(sys.argv[1])
+else:
+    patient_db = processing.main()
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.title = "HFVC Markov Modelling"
@@ -149,4 +155,4 @@ def make_comparison_tables(patient_type, interval):
 
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=False)
